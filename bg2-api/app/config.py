@@ -19,6 +19,7 @@ CLAUDE_MODEL: str       = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 API_PORT: int           = int(os.getenv("API_PORT", "8000"))
 ALLOWED_ORIGINS: list[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
+EMBEDDING_MODEL      = "voyage-multilingual-2"
 COLLECTION_NAME      = "gita_verses"
 TOP_K                = 5
 RETRIEVAL_THRESHOLD  = 0.35
