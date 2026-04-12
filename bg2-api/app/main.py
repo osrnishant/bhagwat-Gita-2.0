@@ -42,7 +42,7 @@ async def health():
 
 @app.post("/ask", response_model=AskResponse)
 @limiter.limit("10/minute")
-async def ask(http_request: Request, request: AskRequest):
+async def ask(request: Request, body: AskRequest):
     from .pipeline import ask_krishna
-    request.question = sanitize(request.question)
-    return await ask_krishna(request)
+    body.question = sanitize(body.question)
+    return await ask_krishna(body)
