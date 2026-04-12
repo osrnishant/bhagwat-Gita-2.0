@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Paths relative to this file so they work regardless of CWD
+APP_DIR   = Path(__file__).resolve().parent
+API_DIR   = APP_DIR.parent
+
+ANTHROPIC_API_KEY: str  = os.getenv("ANTHROPIC_API_KEY", "")
+ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+QDRANT_PATH: str        = os.getenv("QDRANT_PATH", str(API_DIR / "data" / "qdrant"))
+CLAUDE_MODEL: str       = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+EMBEDDING_MODEL: str    = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
+API_PORT: int           = int(os.getenv("API_PORT", "8000"))
+ALLOWED_ORIGINS: list[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
+COLLECTION_NAME      = "gita_verses"
+TOP_K                = 5
+RETRIEVAL_THRESHOLD  = 0.35
+MAX_TOKENS           = 400
+TEMPERATURE          = 0.7
