@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import re
 import time
 
 from .embedding import encode
 from .retriever import search
-from .prompts import KRISHNA_SYSTEM_PROMPT, build_context_prompt
+from .prompts import build_system_prompt
 from .claude_client import generate
 from .models import AskRequest, AskResponse, VerseResult
 from .config import RETRIEVAL_THRESHOLD
@@ -21,14 +23,11 @@ def extract_citations(text: str) -> set[str]:
     Falls back to scanning inline Chapter/अध्याय patterns if the footer is absent.
     Returns a set of 'chapter_verse' strings, e.g. {'2_47', '6_5'}.
     """
-    # Primary: structured footer
     footer = re.search(r"CITED:\s*\[([^\]]*)\]", text, re.IGNORECASE)
     if footer:
-        raw = footer.group(1)
-        pairs = re.findall(r"(\d+):(\d+)", raw)
+        pairs = re.findall(r"(\d+):(\d+)", footer.group(1))
         return {f"{c}_{v}" for c, v in pairs}
 
-    # Fallback: inline citation patterns
     en = re.findall(r"Chapter\s+(\d+),\s+Verse\s+(\d+)", text, re.IGNORECASE)
     hi = re.findall(r"अध्याय\s+(\d+),\s+श्लोक\s+(\d+)", text)
     return {f"{c}_{v}" for c, v in en + hi}
@@ -53,24 +52,29 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     # 3. Low-confidence check
     low_confidence = scores and scores[0] < RETRIEVAL_THRESHOLD
 
-    # 4. Build prompt
-    prompt = build_context_prompt(request.question, verses)
+    # 4. Build system prompt with verses injected into {context}
+    system_prompt = build_system_prompt(verses)
+
+    # 5. User message is the question (plus a note if low confidence)
+    user_message = request.question
     if low_confidence:
-        prompt = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{prompt}"
+        user_message = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{user_message}"
 
-    # 5. Generate via Claude
-    response_text = await generate(KRISHNA_SYSTEM_PROMPT, prompt)
+    # 6. Generate via Claude
+    response_text = await generate(system_prompt, user_message)
 
-    # 6. Validate citations — retry once with a stricter reminder if invalid
+    # 7. Validate citations — retry once with a stricter reminder if invalid
     if not validate_citations(response_text, verses):
         stricter = (
-            KRISHNA_SYSTEM_PROMPT
-            + "\n\nCRITICAL: Only cite verses that appear in the <gita_verses> block. "
+            system_prompt
+            + "\n\nCRITICAL: Only cite verses that appear in the CITED CONTEXT above. "
             "Do not reference any other verse numbers."
         )
-        response_text = await generate(stricter, prompt)
+        response_text = await generate(stricter, user_message)
 
-    # 7. Build response
+    _ = time.monotonic() - start  # available for future latency logging
+
+    # 8. Build response
     verse_results = [
         VerseResult(
             chapter=v["chapter"],
