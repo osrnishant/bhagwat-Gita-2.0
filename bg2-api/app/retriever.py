@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from qdrant_client import QdrantClient
-from .config import QDRANT_PATH, COLLECTION_NAME, RETRIEVAL_THRESHOLD
+from .config import QDRANT_URL, QDRANT_API_KEY, QDRANT_PATH, COLLECTION_NAME, RETRIEVAL_THRESHOLD
 
 _client: QdrantClient | None = None
 
@@ -9,7 +9,12 @@ _client: QdrantClient | None = None
 def get_client() -> QdrantClient:
     global _client
     if _client is None:
-        _client = QdrantClient(path=QDRANT_PATH)
+        if QDRANT_URL:
+            # Qdrant Cloud — used in production (Railway)
+            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        else:
+            # Local file — used in development
+            _client = QdrantClient(path=QDRANT_PATH)
     return _client
 
 

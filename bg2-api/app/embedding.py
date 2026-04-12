@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-import voyageai
+import anthropic
 
-from .config import VOYAGE_API_KEY
+from .config import ANTHROPIC_API_KEY
 
-# Voyage AI remote embeddings — no local model download.
-# voyage-multilingual-2 supports Hindi, Sanskrit, and English.
-# Vectors are 1024-dim, normalized by default.
+# Anthropic resells Voyage AI embeddings — no separate key needed.
+# voyage-multilingual-2 supports Hindi, Sanskrit, and English (1024-dim).
 MODEL_NAME = "voyage-multilingual-2"
 
-_client = voyageai.Client(api_key=VOYAGE_API_KEY)
-print(f"[embedding] Voyage AI client ready ({MODEL_NAME}).", flush=True)
+_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+print(f"[embedding] Anthropic embeddings client ready ({MODEL_NAME}).", flush=True)
 
 
 def encode(text: str) -> list[float]:
     """
-    Embed a query string and return a normalized 1024-dim vector.
-    input_type='query' applies Voyage's query-side instruction internally.
+    Embed a query string via Anthropic's Voyage embedding endpoint.
+    Returns a normalized 1024-dim vector.
     """
-    result = _client.embed([text], model=MODEL_NAME, input_type="query")
-    return result.embeddings[0]
+    response = _client.embeddings.create(
+        model=MODEL_NAME,
+        input=[text],
+    )
+    return response.embeddings[0].embedding
