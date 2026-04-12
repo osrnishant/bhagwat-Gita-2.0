@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -8,7 +9,6 @@ from .retriever import search
 from .prompts import build_system_prompt
 from .claude_client import generate
 from .models import AskRequest, AskResponse, VerseResult
-from .config import RETRIEVAL_THRESHOLD
 
 LOW_CONFIDENCE_NOTE = (
     "I searched the Gita carefully, but these verses are the closest I found "
@@ -43,14 +43,12 @@ def validate_citations(response_text: str, retrieved_verses: list[dict]) -> bool
 async def ask_krishna(request: AskRequest) -> AskResponse:
     start = time.monotonic()
 
-    # 1. Embed the question
-    query_vector = encode(request.question)
+    # 1. Embed the question — run sync Voyage client in thread pool so it
+    #    doesn't block the event loop while waiting on the HTTP round-trip.
+    query_vector = await asyncio.to_thread(encode, request.question)
 
-    # 2. Retrieve top-k verses
-    verses, scores = search(query_vector, request.top_k)
-
-    # 3. Low-confidence check
-    low_confidence = scores and scores[0] < RETRIEVAL_THRESHOLD
+    # 2. Retrieve top-k verses (score_threshold applied inside search())
+    verses, scores, low_confidence = search(query_vector, request.top_k)
 
     # 4. Build system prompt with verses injected into {context}
     system_prompt = build_system_prompt(verses)

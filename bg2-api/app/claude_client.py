@@ -14,12 +14,24 @@ def get_client() -> anthropic.AsyncAnthropic:
 
 
 async def generate(system_prompt: str, user_message: str) -> str:
-    """Call Claude and return response text."""
+    """Call Claude and return response text.
+
+    cache_control on the system prompt block enables Anthropic prompt
+    caching — the Krishna persona + verse context is re-read from cache
+    on subsequent requests, saving ~90% of system-prompt token cost.
+    Cache TTL is 5 minutes (ephemeral), auto-refreshed on each hit.
+    """
     response = await get_client().messages.create(
         model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
         temperature=TEMPERATURE,
-        system=system_prompt,
+        system=[
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         messages=[{"role": "user", "content": user_message}],
     )
     return response.content[0].text
