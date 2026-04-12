@@ -15,7 +15,20 @@ LOW_CONFIDENCE_NOTE = (
 
 
 def extract_citations(text: str) -> set[str]:
-    """Return set of 'chapter_verse' strings cited in the response."""
+    """
+    Parse citations from the structured CITED: footer added by the prompt.
+    Format: CITED: [2:47, 6:5, 3:19]
+    Falls back to scanning inline Chapter/अध्याय patterns if the footer is absent.
+    Returns a set of 'chapter_verse' strings, e.g. {'2_47', '6_5'}.
+    """
+    # Primary: structured footer
+    footer = re.search(r"CITED:\s*\[([^\]]*)\]", text, re.IGNORECASE)
+    if footer:
+        raw = footer.group(1)
+        pairs = re.findall(r"(\d+):(\d+)", raw)
+        return {f"{c}_{v}" for c, v in pairs}
+
+    # Fallback: inline citation patterns
     en = re.findall(r"Chapter\s+(\d+),\s+Verse\s+(\d+)", text, re.IGNORECASE)
     hi = re.findall(r"अध्याय\s+(\d+),\s+श्लोक\s+(\d+)", text)
     return {f"{c}_{v}" for c, v in en + hi}
