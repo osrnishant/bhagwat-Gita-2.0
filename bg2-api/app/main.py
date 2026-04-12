@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from .config import ALLOWED_ORIGINS, EMBEDDING_MODEL
+from .embedding import encode as _preload_embedding  # noqa: F401 — triggers model load
 from .models import AskRequest, AskResponse, HealthResponse
 from .retriever import get_vector_count
 

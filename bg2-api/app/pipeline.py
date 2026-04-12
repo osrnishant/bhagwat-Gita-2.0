@@ -1,7 +1,7 @@
 import re
 import time
 
-from .embedder import embed_query
+from .embedding import encode
 from .retriever import search
 from .prompts import KRISHNA_SYSTEM_PROMPT, build_context_prompt
 from .claude_client import generate
@@ -32,7 +32,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     start = time.monotonic()
 
     # 1. Embed the question
-    query_vector = embed_query(request.question)
+    query_vector = encode(request.question)
 
     # 2. Retrieve top-k verses
     verses, scores = search(query_vector, request.top_k)
