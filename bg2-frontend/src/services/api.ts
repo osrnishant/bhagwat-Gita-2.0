@@ -24,15 +24,19 @@ export class ApiError extends Error {
 }
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const API_KEY  = import.meta.env.VITE_API_KEY  ?? ''
 
 export async function askKrishna(
   question: string,
   language: 'en' | 'hi' = 'en',
   voice = false,
 ): Promise<AskResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`
+
   const res = await fetch(`${BASE_URL}/ask`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ question, language, voice, top_k: 5 }),
   })
 
