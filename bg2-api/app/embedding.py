@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import os
+
 from sentence_transformers import SentenceTransformer
 
-from .config import EMBEDDING_MODEL
+# Model is downloaded from HuggingFace Hub on first run and cached locally.
+# On Railway/Heroku the cache lives in ~/.cache/huggingface/ inside the dyno.
+# Set HF_HOME env var to override the cache location if needed.
+MODEL_NAME = "intfloat/multilingual-e5-base"
 
-# Loaded once at import time — never reloaded.
-# main.py imports this module at startup so the model is warm before the first request.
-print(f"[embedding] Loading {EMBEDDING_MODEL} …", flush=True)
-_model = SentenceTransformer(EMBEDDING_MODEL)
-print(f"[embedding] Model ready.", flush=True)
+print(f"[embedding] Loading {MODEL_NAME} from HuggingFace (cached after first run) …", flush=True)
+_model = SentenceTransformer(MODEL_NAME, cache_folder=os.getenv("HF_HOME"))
+print("[embedding] Model ready.", flush=True)
 
 
 def encode(text: str) -> list[float]:
