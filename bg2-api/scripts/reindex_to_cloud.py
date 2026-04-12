@@ -33,6 +33,9 @@ if not QDRANT_URL:
 if not QDRANT_API_KEY:
     sys.exit("Missing QDRANT_API_KEY in .env")
 
+import socket
+import urllib.parse
+
 import httpx
 
 try:
@@ -40,6 +43,24 @@ try:
     from qdrant_client.models import Distance, VectorParams, PointStruct
 except ImportError:
     sys.exit("Missing dependency: pip install qdrant-client")
+
+# --------------------------------------------------------------------------
+# DNS cache: resolve the Qdrant host once at startup, then pin the result
+# so flaky home-router DNS can't break connections mid-run.
+# --------------------------------------------------------------------------
+_qdrant_host = urllib.parse.urlparse(QDRANT_URL).hostname or ""
+_dns_cache: dict[str, list] = {}
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _cached_getaddrinfo(host, port, *args, **kwargs):
+    if host == _qdrant_host:
+        if host not in _dns_cache:
+            _dns_cache[host] = _orig_getaddrinfo(host, port, *args, **kwargs)
+        return _dns_cache[host]
+    return _orig_getaddrinfo(host, port, *args, **kwargs)
+
+socket.getaddrinfo = _cached_getaddrinfo
 
 SCRIPTS_DIR  = Path(__file__).resolve().parent
 API_DIR      = SCRIPTS_DIR.parent
@@ -73,6 +94,23 @@ def embed_batch(api_key: str, texts: list[str]) -> list[list[float]]:
     raise RuntimeError("Exceeded retries on Voyage rate limit")
 
 
+def make_qdrant() -> "QdrantClient":
+    return QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=30)
+
+
+def upsert_with_retry(points: list, collection: str) -> None:
+    """Upsert with a fresh client and exponential backoff on connection errors."""
+    for attempt in range(5):
+        try:
+            make_qdrant().upsert(collection_name=collection, points=points)
+            return
+        except Exception as e:
+            wait = 2 ** attempt
+            print(f"  Upsert error ({e.__class__.__name__}) — retrying in {wait}s …", flush=True)
+            time.sleep(wait)
+    raise RuntimeError("Exceeded retries on Qdrant upsert")
+
+
 def main() -> None:
     print(f"Model:      {MODEL_NAME} ({EMBED_DIM}-dim)")
     print(f"Qdrant URL: {QDRANT_URL}")
@@ -82,7 +120,7 @@ def main() -> None:
         verses = json.load(f)
     print(f"Loaded {len(verses)} verses from {VERSES_PATH}\n")
 
-    qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    qdrant = make_qdrant()
 
     # Drop and recreate collection
     existing = {c.name for c in qdrant.get_collections().collections}
@@ -96,17 +134,16 @@ def main() -> None:
     print(f"Created '{COLLECTION}' collection (dim={EMBED_DIM}, cosine)\n")
 
     total   = len(verses)
-    points: list[PointStruct] = []
+    upserted = 0
 
     for i in range(0, total, BATCH_SIZE):
-        batch  = verses[i : i + BATCH_SIZE]
-        texts  = [v["embedding_text"] for v in batch]
+        batch   = verses[i : i + BATCH_SIZE]
+        texts   = [v["embedding_text"] for v in batch]
         vectors = embed_batch(VOYAGE_API_KEY, texts)
 
-        for verse, vector in zip(batch, vectors):
-            point_id = verse["chapter"] * 1000 + verse["verse"]
-            points.append(PointStruct(
-                id=point_id,
+        points = [
+            PointStruct(
+                id=verse["chapter"] * 1000 + verse["verse"],
                 vector=vector,
                 payload={
                     "id":      verse["id"],
@@ -117,7 +154,12 @@ def main() -> None:
                     "english": verse["english"],
                     "themes":  verse["themes"],
                 },
-            ))
+            )
+            for verse, vector in zip(batch, vectors)
+        ]
+
+        upsert_with_retry(points, COLLECTION)
+        upserted += len(points)
 
         done = min(i + BATCH_SIZE, total)
         print(f"Embedded {done}/{total}", flush=True)
@@ -126,8 +168,7 @@ def main() -> None:
         if done < total:
             time.sleep(21)
 
-    qdrant.upsert(collection_name=COLLECTION, points=points)
-    print(f"\nUpserted {len(points)} points into '{COLLECTION}'")
+    print(f"\nUpserted {upserted} points into '{COLLECTION}'")
 
     # Verify
     info  = qdrant.get_collection(COLLECTION)
