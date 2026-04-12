@@ -31,13 +31,12 @@ def run(query: str) -> None:
     print("─" * 60)
 
     vector = encode(query)
-    verses, scores = search(vector, top_k=5)
+    verses, scores, low = search(vector, top_k=5)
 
     if not verses:
         print("  No results.")
         return
 
-    low = scores[0] < RETRIEVAL_THRESHOLD
     if low:
         print(f"  ⚠  Top score {scores[0]:.3f} < threshold {RETRIEVAL_THRESHOLD} — low confidence\n")
 

@@ -4,6 +4,8 @@ import asyncio
 import re
 import time
 
+from cachetools import TTLCache
+
 from .embedding import encode
 from .retriever import search
 from .prompts import build_system_prompt
@@ -14,6 +16,18 @@ LOW_CONFIDENCE_NOTE = (
     "I searched the Gita carefully, but these verses are the closest I found "
     "to your question. They may not speak to it directly."
 )
+
+# Cache full AskResponse objects keyed on (question, language, top_k).
+# Corpus is static — responses don't change between deployments.
+# 256 entries × ~2KB avg ≈ 512KB max memory. TTL 1 hour.
+_response_cache: TTLCache = TTLCache(maxsize=256, ttl=3600)
+
+_LANGUAGE_NAMES = {
+    "en": "English",
+    "hi": "Hindi",
+    "sa": "Sanskrit",
+    "mixed": "Hindi-English mix",
+}
 
 
 def extract_citations(text: str) -> set[str]:
@@ -43,6 +57,12 @@ def validate_citations(response_text: str, retrieved_verses: list[dict]) -> bool
 async def ask_krishna(request: AskRequest) -> AskResponse:
     start = time.monotonic()
 
+    # Cache check — normalise key so "What is karma?" and "what is karma?"
+    # share the same entry.
+    cache_key = (request.question.lower().strip(), request.language, request.top_k)
+    if cache_key in _response_cache:
+        return _response_cache[cache_key]
+
     # 1. Embed the question — run sync Voyage client in thread pool so it
     #    doesn't block the event loop while waiting on the HTTP round-trip.
     query_vector = await asyncio.to_thread(encode, request.question)
@@ -50,11 +70,12 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     # 2. Retrieve top-k verses (score_threshold applied inside search())
     verses, scores, low_confidence = search(query_vector, request.top_k)
 
-    # 4. Build system prompt with verses injected into {context}
+    # 3. Build system prompt with verses injected into {context}
     system_prompt = build_system_prompt(verses)
 
-    # 5. User message is the question (plus a note if low confidence)
-    user_message = request.question
+    # 4. User message: explicit language directive + question (+ low-confidence note)
+    lang_name = _LANGUAGE_NAMES.get(request.language, "English")
+    user_message = f"[Respond in: {lang_name}]\n\n{request.question}"
     if low_confidence:
         user_message = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{user_message}"
 
@@ -84,9 +105,11 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
         for v in verses
     ]
 
-    return AskResponse(
+    result = AskResponse(
         response_text=response_text,
         verses=verse_results,
         audio_url=None,
         retrieval_scores=scores,
     )
+    _response_cache[cache_key] = result
+    return result
