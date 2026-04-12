@@ -10,6 +10,7 @@ from .embedding import encode
 from .retriever import search
 from .prompts import build_system_prompt
 from .claude_client import generate
+from .tts_client import synthesize
 from .models import AskRequest, AskResponse, VerseResult
 
 LOW_CONFIDENCE_NOTE = (
@@ -59,7 +60,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
 
     # Cache check — normalise key so "What is karma?" and "what is karma?"
     # share the same entry.
-    cache_key = (request.question.lower().strip(), request.language, request.top_k)
+    cache_key = (request.question.lower().strip(), request.language, request.top_k, request.voice)
     if cache_key in _response_cache:
         return _response_cache[cache_key]
 
@@ -93,7 +94,13 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
 
     _ = time.monotonic() - start  # available for future latency logging
 
-    # 8. Build response
+    # 8. TTS — strip the CITED footer before sending to ElevenLabs
+    audio_url: str | None = None
+    if request.voice:
+        clean_text = re.sub(r"\nCITED:.*$", "", response_text, flags=re.IGNORECASE | re.DOTALL).strip()
+        audio_url = await synthesize(clean_text)
+
+    # 9. Build response
     verse_results = [
         VerseResult(
             chapter=v["chapter"],
@@ -108,7 +115,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     result = AskResponse(
         response_text=response_text,
         verses=verse_results,
-        audio_url=None,
+        audio_url=audio_url,
         retrieval_scores=scores,
     )
     _response_cache[cache_key] = result
