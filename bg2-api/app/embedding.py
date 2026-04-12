@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-import os
+import voyageai
 
-from sentence_transformers import SentenceTransformer
+from .config import VOYAGE_API_KEY
 
-# Model is downloaded from HuggingFace Hub on first run and cached locally.
-# On Railway/Heroku the cache lives in ~/.cache/huggingface/ inside the dyno.
-# Set HF_HOME env var to override the cache location if needed.
-MODEL_NAME = "intfloat/multilingual-e5-base"
+# Voyage AI remote embeddings — no local model download.
+# voyage-multilingual-2 supports Hindi, Sanskrit, and English.
+# Vectors are 1024-dim, normalized by default.
+MODEL_NAME = "voyage-multilingual-2"
 
-print(f"[embedding] Loading {MODEL_NAME} from HuggingFace (cached after first run) …", flush=True)
-_model = SentenceTransformer(MODEL_NAME, cache_folder=os.getenv("HF_HOME"))
-print("[embedding] Model ready.", flush=True)
+_client = voyageai.Client(api_key=VOYAGE_API_KEY)
+print(f"[embedding] Voyage AI client ready ({MODEL_NAME}).", flush=True)
 
 
 def encode(text: str) -> list[float]:
     """
-    Embed text and return a normalized 768-dim vector.
-    Applies the 'query: ' prefix required by multilingual-e5-base at query time.
+    Embed a query string and return a normalized 1024-dim vector.
+    input_type='query' applies Voyage's query-side instruction internally.
     """
-    return _model.encode(f"query: {text}", normalize_embeddings=True).tolist()
+    result = _client.embed([text], model=MODEL_NAME, input_type="query")
+    return result.embeddings[0]

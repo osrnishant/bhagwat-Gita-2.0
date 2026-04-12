@@ -12,6 +12,7 @@ API_DIR   = APP_DIR.parent
 
 ANTHROPIC_API_KEY: str  = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+VOYAGE_API_KEY: str     = os.getenv("VOYAGE_API_KEY", "")
 QDRANT_PATH: str        = os.getenv("QDRANT_PATH", str(API_DIR / "data" / "qdrant"))
 CLAUDE_MODEL: str       = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 EMBEDDING_MODEL: str    = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
