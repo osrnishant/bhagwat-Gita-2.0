@@ -8,13 +8,17 @@ import edge_tts
 logger = logging.getLogger(__name__)
 
 # Soothing Indian female voices — auto-selected by language
+# NeerjaExpressive is Microsoft's affective neural voice — warmer and more natural than NeerjaNeural
 _VOICES: dict[str, str] = {
-    "hi":     "hi-IN-SwaraNeural",      # Hindi female
-    "sa":     "hi-IN-SwaraNeural",      # Sanskrit — use Hindi voice
-    "mixed":  "hi-IN-SwaraNeural",      # Hinglish — use Hindi voice
-    "en":     "en-IN-NeerjaNeural",     # Indian English female
+    "hi":     "hi-IN-SwaraNeural",          # Hindi female
+    "sa":     "hi-IN-SwaraNeural",          # Sanskrit — use Hindi voice
+    "mixed":  "hi-IN-SwaraNeural",          # Hinglish — use Hindi voice
+    "en":     "en-IN-NeerjaExpressive",     # Indian English female (affective, warmer)
 }
-_DEFAULT_VOICE = "en-IN-NeerjaNeural"
+_DEFAULT_VOICE = "en-IN-NeerjaExpressive"
+
+# Slight slowdown (-8%) for a contemplative, soothing delivery
+_RATE = "-8%"
 
 
 async def synthesize(text: str, language: str = "en") -> str | None:
@@ -24,7 +28,7 @@ async def synthesize(text: str, language: str = "en") -> str | None:
     """
     voice = _VOICES.get(language, _DEFAULT_VOICE)
     try:
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=_RATE)
         audio = bytearray()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
