@@ -9,12 +9,15 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from .config import EMBEDDING_MODEL, API_KEY
+from .config import EMBEDDING_MODEL, API_KEY, ALLOWED_ORIGINS
 from .embedding import encode as _preload_embedding  # noqa: F401 — triggers model load
 from .models import AskRequest, AskResponse, HealthResponse
 from .retriever import get_vector_count
 
 logger = logging.getLogger(__name__)
+
+if not API_KEY:
+    logger.warning("API_KEY not set — /ask is unauthenticated. Set API_KEY in env vars for production.")
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Bhagavad Gita 2.0 API")
@@ -23,10 +26,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -57,11 +60,7 @@ async def security_headers(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(
-        status_code=500,
-        content={"error": f"{type(exc).__name__}: {exc}"},
-        headers={"Access-Control-Allow-Origin": "*"},
-    )
+    return JSONResponse(status_code=500, content={"error": "Something went wrong"})
 
 
 def sanitize(text: str) -> str:

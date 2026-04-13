@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from pathlib import Path
 
 from cachetools import TTLCache
 
@@ -14,7 +15,7 @@ from .tts_client import synthesize
 from .models import AskRequest, AskResponse, VerseResult
 
 LOW_CONFIDENCE_NOTE = (
-    "I searched the Gita carefully, but these verses are the closest I found "
+    "I searched carefully, but these are the closest matches I found "
     "to your question. They may not speak to it directly."
 )
 
@@ -29,6 +30,33 @@ _LANGUAGE_NAMES = {
     "sa": "Sanskrit",
     "mixed": "Hindi-English mix",
 }
+
+# Casual system prompt — no RAG context needed
+_CASUAL_PROMPT: str = (
+    Path(__file__).resolve().parent / "prompts" / "arya_casual.txt"
+).read_text(encoding="utf-8").strip()
+
+# Patterns that indicate a greeting / small talk — no Gita context needed
+_CASUAL_RE = re.compile(
+    r"^\s*("
+    r"hi|hello|hey|hiya|howdy|greetings|"
+    r"how are you|how r u|how are u|how's it going|how'?re you|"
+    r"what'?s up|wassup|sup|"
+    r"good morning|good afternoon|good evening|good night|"
+    r"thanks|thank you|thank u|thx|ty|"
+    r"bye|goodbye|see you|see ya|cya|"
+    r"ok|okay|cool|great|nice|got it|"
+    r"who are you|what are you|introduce yourself|tell me about yourself|"
+    r"are you there|you there|hello\??|"
+    r"namaste|namaskar|jai shri krishna|jai hind"
+    r")[\s!?.]*$",
+    re.IGNORECASE,
+)
+
+
+def is_casual(question: str) -> bool:
+    """Return True if the question is a greeting or small talk with no need for RAG."""
+    return bool(_CASUAL_RE.match(question.strip()))
 
 
 def extract_citations(text: str) -> set[str]:
@@ -64,6 +92,25 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     if cache_key in _response_cache:
         return _response_cache[cache_key]
 
+    # ── Casual / greeting path — skip RAG entirely ────────────────────────────
+    if is_casual(request.question):
+        response_text = await generate(_CASUAL_PROMPT, request.question)
+
+        audio_url: str | None = None
+        if request.voice:
+            audio_url = await synthesize(response_text, language=request.language)
+
+        result = AskResponse(
+            response_text=response_text,
+            verses=[],
+            audio_url=audio_url,
+            retrieval_scores=[],
+        )
+        _response_cache[cache_key] = result
+        return result
+
+    # ── Substantive question path — full RAG pipeline ─────────────────────────
+
     # 1. Embed the question — run sync Voyage client in thread pool so it
     #    doesn't block the event loop while waiting on the HTTP round-trip.
     query_vector = await asyncio.to_thread(encode, request.question)
@@ -80,10 +127,10 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     if low_confidence:
         user_message = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{user_message}"
 
-    # 6. Generate via Claude
+    # 5. Generate via Claude
     response_text = await generate(system_prompt, user_message)
 
-    # 7. Validate citations — retry once with a stricter reminder if invalid
+    # 6. Validate citations — retry once with a stricter reminder if invalid
     if not validate_citations(response_text, verses):
         stricter = (
             system_prompt
@@ -94,13 +141,13 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
 
     _ = time.monotonic() - start  # available for future latency logging
 
-    # 8. TTS — strip the CITED footer before sending to ElevenLabs
-    audio_url: str | None = None
+    # 7. TTS — strip the CITED footer before sending to TTS
+    audio_url = None
     if request.voice:
         clean_text = re.sub(r"\nCITED:.*$", "", response_text, flags=re.IGNORECASE | re.DOTALL).strip()
         audio_url = await synthesize(clean_text, language=request.language)
 
-    # 9. Build response
+    # 8. Build response
     verse_results = [
         VerseResult(
             chapter=v["chapter"],
