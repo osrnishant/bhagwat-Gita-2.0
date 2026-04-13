@@ -13,14 +13,23 @@ def get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-async def generate(system_prompt: str, user_message: str) -> str:
+async def generate(
+    system_prompt: str,
+    user_message: str,
+    history: list[dict] | None = None,
+) -> str:
     """Call Claude and return response text.
 
-    cache_control on the system prompt block enables Anthropic prompt
-    caching — the Krishna persona + verse context is re-read from cache
-    on subsequent requests, saving ~90% of system-prompt token cost.
-    Cache TTL is 5 minutes (ephemeral), auto-refreshed on each hit.
+    history: list of prior turns as [{"role": "user"|"assistant", "content": str}]
+    Supports conversational memory — prior turns are passed as context.
+    cache_control on the system prompt enables Anthropic prompt caching (~90% cost
+    reduction on system tokens, 5-min TTL, auto-refreshed on each hit).
     """
+    messages: list[dict] = []
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
+
     response = await get_client().messages.create(
         model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
@@ -32,6 +41,12 @@ async def generate(system_prompt: str, user_message: str) -> str:
                 "cache_control": {"type": "ephemeral"},
             }
         ],
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     )
-    return response.content[0].text
+
+    # Guard: Claude may return tool_use or other block types in edge cases
+    for block in response.content:
+        if block.type == "text":
+            return block.text
+
+    raise ValueError(f"Claude returned no text block. Stop reason: {response.stop_reason}")

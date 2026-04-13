@@ -1,4 +1,3 @@
-import html
 import logging
 import re
 
@@ -20,7 +19,7 @@ if not API_KEY:
     logger.warning("API_KEY not set — /ask is unauthenticated. Set API_KEY in env vars for production.")
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Bhagavad Gita 2.0 API")
+app = FastAPI(title="Arya API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -35,10 +34,6 @@ app.add_middleware(
 
 @app.middleware("http")
 async def bearer_auth(request: Request, call_next):
-    """Require Authorization: Bearer <API_KEY> on /ask.
-    Skipped entirely when API_KEY is not configured (local dev).
-    /health is always public.
-    """
     if API_KEY and request.url.path == "/ask" and request.method != "OPTIONS":
         auth = request.headers.get("Authorization", "")
         if auth != f"Bearer {API_KEY}":
@@ -64,7 +59,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 def sanitize(text: str) -> str:
-    text = html.escape(text)
+    """Strip HTML tags then trim whitespace. Applied before Pydantic validation."""
     text = re.sub(r"<[^>]+>", "", text)
     return text.strip()
 
