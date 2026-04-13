@@ -98,7 +98,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     audio_url: str | None = None
     if request.voice:
         clean_text = re.sub(r"\nCITED:.*$", "", response_text, flags=re.IGNORECASE | re.DOTALL).strip()
-        audio_url = await synthesize(clean_text)
+        audio_url = await synthesize(clean_text, language=request.language)
 
     # 9. Build response
     verse_results = [
