@@ -42,10 +42,17 @@ async def synthesize(text: str) -> str | None:
                     "Accept": "audio/mpeg",
                 },
             )
+            if not response.is_success:
+                logger.warning(
+                    "TTS failed: status=%s body=%s",
+                    response.status_code,
+                    response.text[:300],
+                )
+                return f"error:{response.status_code}:{response.text[:200]}"
             response.raise_for_status()
     except Exception as exc:
         logger.warning("TTS call failed: %s", exc)
-        return None
+        return f"error:exception:{exc}"
 
     encoded = base64.b64encode(response.content).decode("ascii")
     return f"data:audio/mpeg;base64,{encoded}"
