@@ -36,7 +36,7 @@ export default function VoiceMode() {
     setTextInput('')
     try {
       const apiLang = lang === 'hi-IN' ? 'hi' : 'en'
-      const result: AskResponse = await askKrishna(question, apiLang, false)
+      const result: AskResponse = await askKrishna(question, apiLang, true)
       navigate('/response', { state: { question, result } })
     } catch (err) {
       const message =
