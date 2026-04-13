@@ -8,13 +8,17 @@ _TEMPLATE: str = (
 
 
 def build_system_prompt(verses: list[dict]) -> str:
-    """Return the system prompt with the retrieved verse block substituted for {context}."""
+    """Return the system prompt with the retrieved verse block substituted for {context}.
+
+    Verse labels are stripped of 'Chapter/Verse' framing to prevent Claude from
+    associating them with Krishna and leaking that name into responses.
+    The chapter:verse IDs are preserved only for the CITED footer validation.
+    """
     blocks = []
-    for v in verses:
+    for i, v in enumerate(verses, 1):
         blocks.append(
-            f"[Chapter {v['chapter']}, Verse {v['verse']}]\n"
-            f"Sanskrit: {v['sanskrit']}\n"
-            f"Hindi: {v['hindi']}\n"
-            f"English: {v['english']}"
+            f"[Reference {i} — id:{v['chapter']}:{v['verse']}]\n"
+            f"{v['english']}\n"
+            f"Hindi: {v['hindi']}"
         )
     return _TEMPLATE.replace("{context}", "\n\n".join(blocks))
