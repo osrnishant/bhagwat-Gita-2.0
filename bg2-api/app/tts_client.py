@@ -13,9 +13,9 @@ _VOICES: dict[str, str] = {
     "hi":     "hi-IN-SwaraNeural",          # Hindi female
     "sa":     "hi-IN-SwaraNeural",          # Sanskrit — use Hindi voice
     "mixed":  "hi-IN-SwaraNeural",          # Hinglish — use Hindi voice
-    "en":     "en-IN-NeerjaExpressive",     # Indian English female (affective, warmer)
+    "en":     "en-IN-NeerjaExpressiveNeural",  # Indian English female (affective, warmer)
 }
-_DEFAULT_VOICE = "en-IN-NeerjaExpressive"
+_DEFAULT_VOICE = "en-IN-NeerjaExpressiveNeural"
 
 # Slight slowdown (-8%) for a contemplative, soothing delivery
 _RATE = "-8%"
