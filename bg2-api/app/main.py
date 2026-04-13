@@ -9,7 +9,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from .config import ALLOWED_ORIGINS, EMBEDDING_MODEL, API_KEY
+from .config import EMBEDDING_MODEL, API_KEY
 from .embedding import encode as _preload_embedding  # noqa: F401 — triggers model load
 from .models import AskRequest, AskResponse, HealthResponse
 from .retriever import get_vector_count
@@ -23,9 +23,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -35,7 +36,7 @@ async def bearer_auth(request: Request, call_next):
     Skipped entirely when API_KEY is not configured (local dev).
     /health is always public.
     """
-    if API_KEY and request.url.path == "/ask":
+    if API_KEY and request.url.path == "/ask" and request.method != "OPTIONS":
         auth = request.headers.get("Authorization", "")
         if auth != f"Bearer {API_KEY}":
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
