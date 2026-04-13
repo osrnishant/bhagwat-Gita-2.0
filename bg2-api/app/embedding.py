@@ -1,28 +1,23 @@
 from __future__ import annotations
 
-import anthropic
+import httpx
 
-from .config import ANTHROPIC_API_KEY
+from .config import VOYAGE_API_KEY
 
-# Anthropic resells Voyage AI embeddings — no separate key needed.
-# voyage-multilingual-2 supports Hindi, Sanskrit, and English (1024-dim).
 MODEL_NAME = "voyage-multilingual-2"
-
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 
 
 def encode(text: str) -> list[float]:
-    """
-    Embed a query string via Anthropic's Voyage embedding endpoint.
-    Returns a normalized 1024-dim vector.
-
-    input_type="query" tells Voyage to optimize the embedding for
-    retrieval queries (vs "document" used at indexing time) — improves
-    retrieval accuracy by ~5.6% per Voyage benchmarks.
-    """
-    response = _client.embeddings.create(
-        model=MODEL_NAME,
-        input=[text],
-        input_type="query",
+    """Embed a query string via the VoyageAI REST API (1024-dim)."""
+    resp = httpx.post(
+        _VOYAGE_URL,
+        headers={
+            "Authorization": f"Bearer {VOYAGE_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={"model": MODEL_NAME, "input": [text], "input_type": "query"},
+        timeout=30,
     )
-    return response.embeddings[0].embedding
+    resp.raise_for_status()
+    return resp.json()["data"][0]["embedding"]
