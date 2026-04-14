@@ -6,16 +6,32 @@ import re
 import time
 from pathlib import Path
 
+import anthropic
 from cachetools import TTLCache
 
 from .embedding import encode
 from .retriever import search
 from .prompts import build_system_prompt
 from .claude_client import generate, generate_stream
+from .metrics import record_cache_hit
 from .tts_client import synthesize
 from .models import AskRequest, AskResponse, VerseResult
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_EN = (
+    "Parth, in this moment the divine thread cannot reach you — "
+    "please try again shortly."
+)
+_FALLBACK_HI = (
+    "पार्थ, इस क्षण दिव्य संदेश तक पहुँचना संभव नहीं — "
+    "कृपया थोड़ी देर बाद पुनः प्रयास करें।"
+)
+
+
+def _claude_fallback_message(language: str) -> str:
+    return _FALLBACK_HI if language in ("hi", "sa", "mixed") else _FALLBACK_EN
+
 
 LOW_CONFIDENCE_NOTE = (
     "I searched carefully, but these are the closest matches I found "
@@ -127,9 +143,13 @@ async def stream_krishna(request: AskRequest):
     # Casual path — no RAG, stream directly
     if is_casual(request.question) and not has_history:
         yield f"event: meta\ndata: {json.dumps({'verses': [], 'retrieval_scores': []})}\n\n"
-        async for chunk in generate_stream(_CASUAL_PROMPT, request.question):
-            # JSON-encode each chunk so embedded newlines don't break SSE framing
-            yield f"data: {json.dumps(chunk)}\n\n"
+        try:
+            async for chunk in generate_stream(_CASUAL_PROMPT, request.question):
+                # JSON-encode each chunk so embedded newlines don't break SSE framing
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except anthropic.APIError as exc:
+            logger.error("Claude API unavailable during casual stream: %s", exc)
+            yield f"data: {json.dumps(_claude_fallback_message(request.language))}\n\n"
         yield "data: [DONE]\n\n"
         return
 
@@ -163,8 +183,12 @@ async def stream_krishna(request: AskRequest):
     ]
     yield f"event: meta\ndata: {json.dumps({'verses': verse_dicts, 'retrieval_scores': scores})}\n\n"
 
-    async for chunk in generate_stream(system_prompt, user_message, history=claude_history):
-        yield f"data: {json.dumps(chunk)}\n\n"
+    try:
+        async for chunk in generate_stream(system_prompt, user_message, history=claude_history):
+            yield f"data: {json.dumps(chunk)}\n\n"
+    except anthropic.APIError as exc:
+        logger.error("Claude API unavailable during stream: %s", exc)
+        yield f"data: {json.dumps(_claude_fallback_message(request.language))}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -175,6 +199,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     # Only cache stateless (no-history) requests
     cache_key = (request.question.lower().strip(), request.language, request.top_k, request.voice)
     if not has_history and cache_key in _response_cache:
+        record_cache_hit()
         return _response_cache[cache_key]
 
     # Build Claude history from prior turns
@@ -182,7 +207,14 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
 
     # ── Casual / greeting path ────────────────────────────────────────────────
     if is_casual(request.question) and not has_history:
-        response_text = await generate(_CASUAL_PROMPT, request.question)
+        try:
+            response_text = await generate(_CASUAL_PROMPT, request.question)
+        except anthropic.APIError as exc:
+            logger.error("Claude API unavailable (casual path): %s", exc)
+            return AskResponse(
+                response_text=_claude_fallback_message(request.language),
+                verses=[], audio_url=None, retrieval_scores=[],
+            )
 
         audio_url: str | None = None
         if request.voice:
@@ -215,7 +247,14 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     if low_confidence:
         user_message = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{user_message}"
 
-    response_text = await generate(system_prompt, user_message, history=claude_history)
+    try:
+        response_text = await generate(system_prompt, user_message, history=claude_history)
+    except anthropic.APIError as exc:
+        logger.error("Claude API unavailable (RAG path): %s", exc)
+        return AskResponse(
+            response_text=_claude_fallback_message(request.language),
+            verses=[], audio_url=None, retrieval_scores=[],
+        )
 
     # Validate citations — one retry max, then accept original to avoid loops
     if not validate_citations(response_text, verses):

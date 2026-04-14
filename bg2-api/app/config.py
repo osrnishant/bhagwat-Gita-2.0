@@ -25,6 +25,10 @@ ALLOWED_ORIGINS: list[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173
 # Bearer token that the frontend must send in every /ask request.
 # Leave empty to disable auth (local dev). Set in Railway + Vercel env vars.
 API_KEY: str              = os.getenv("API_KEY", "")
+# Set REQUIRE_API_KEY=true in production to fail startup if API_KEY is missing.
+REQUIRE_API_KEY: bool     = os.getenv("REQUIRE_API_KEY", "false").lower() == "true"
+LOG_LEVEL: str            = os.getenv("LOG_LEVEL", "INFO")
+LOG_FORMAT: str           = os.getenv("LOG_FORMAT", "json")   # "json" or "text"
 
 EMBEDDING_MODEL      = os.getenv("EMBEDDING_MODEL", "voyage-multilingual-2")
 COLLECTION_NAME      = "gita_verses"

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import hmac
 import logging
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,18 +14,37 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from .config import EMBEDDING_MODEL, API_KEY, ALLOWED_ORIGINS
+from .config import (
+    EMBEDDING_MODEL, API_KEY, ALLOWED_ORIGINS,
+    CLAUDE_MODEL, REQUIRE_API_KEY, LOG_LEVEL, LOG_FORMAT,
+)
 from .embedding import encode as _preload_embedding  # noqa: F401 — triggers model load
-from .models import AskRequest, AskResponse, HealthResponse
+from .logging_config import configure_logging
+from .metrics import record_request, snapshot as metrics_snapshot
+from .models import AskRequest, AskResponse, HealthResponse, MetricsResponse
 from .retriever import get_vector_count
 
 logger = logging.getLogger(__name__)
 
-if not API_KEY:
-    logger.warning("API_KEY not set — /ask is unauthenticated. Set API_KEY in env vars for production.")
+_ASK_PATHS = {"/ask", "/ask/stream"}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging(level=LOG_LEVEL, fmt=LOG_FORMAT)
+    if REQUIRE_API_KEY and not API_KEY:
+        raise RuntimeError(
+            "REQUIRE_API_KEY=true but API_KEY is not set — refusing to start. "
+            "Set API_KEY in your environment or set REQUIRE_API_KEY=false for local dev."
+        )
+    if not API_KEY:
+        logger.warning("API_KEY not set — /ask is unauthenticated. Set API_KEY for production.")
+    logger.info("Arya API starting", extra={"claude_model": CLAUDE_MODEL, "origins": ALLOWED_ORIGINS})
+    yield
+
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Arya API")
+app = FastAPI(title="Arya API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -43,16 +65,25 @@ async def request_id_logger(request: Request, call_next):
     response = await call_next(request)
     latency_ms = (time.monotonic() - start) * 1000
     logger.info(
-        "rid=%s method=%s path=%s status=%d latency_ms=%.0f",
-        request_id, request.method, request.url.path, response.status_code, latency_ms,
+        "request",
+        extra={
+            "rid": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": round(latency_ms),
+        },
     )
+    # Track metrics only for /ask endpoints (not /health, /metrics)
+    if request.url.path in _ASK_PATHS:
+        record_request(latency_ms, error=response.status_code >= 500)
     response.headers["X-Request-Id"] = request_id
     return response
 
 
 @app.middleware("http")
 async def bearer_auth(request: Request, call_next):
-    if API_KEY and request.url.path in ("/ask", "/ask/stream") and request.method != "OPTIONS":
+    if API_KEY and request.url.path in _ASK_PATHS and request.method != "OPTIONS":
         auth = request.headers.get("Authorization", "")
         if not hmac.compare_digest(auth, f"Bearer {API_KEY}"):
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -89,6 +120,14 @@ async def health():
         vector_count=await get_vector_count(),
         model=EMBEDDING_MODEL,
     )
+
+
+@app.get("/metrics", response_model=MetricsResponse)
+async def metrics():
+    """In-memory request metrics. Resets on restart."""
+    snap = metrics_snapshot()
+    snap["vector_count"] = await get_vector_count()
+    return MetricsResponse(**snap)
 
 
 @app.post("/ask", response_model=AskResponse)

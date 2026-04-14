@@ -37,3 +37,13 @@ class HealthResponse(BaseModel):
     status: str
     vector_count: int
     model: str
+
+
+class MetricsResponse(BaseModel):
+    requests_total: int
+    cache_hits: int
+    cache_hit_rate: float
+    errors_total: int
+    avg_latency_ms: float
+    uptime_seconds: float
+    vector_count: int
