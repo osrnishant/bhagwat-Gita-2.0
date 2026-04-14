@@ -1,6 +1,8 @@
 import hmac
 import logging
 import re
+import time
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +33,21 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def request_id_logger(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:8]
+    request.state.request_id = request_id
+    start = time.monotonic()
+    response = await call_next(request)
+    latency_ms = (time.monotonic() - start) * 1000
+    logger.info(
+        "rid=%s method=%s path=%s status=%d latency_ms=%.0f",
+        request_id, request.method, request.url.path, response.status_code, latency_ms,
+    )
+    response.headers["X-Request-Id"] = request_id
+    return response
 
 
 @app.middleware("http")
@@ -69,7 +86,7 @@ def sanitize(text: str) -> str:
 async def health():
     return HealthResponse(
         status="ok",
-        vector_count=get_vector_count(),
+        vector_count=await get_vector_count(),
         model=EMBEDDING_MODEL,
     )
 

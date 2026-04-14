@@ -26,9 +26,9 @@ ALLOWED_ORIGINS: list[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173
 # Leave empty to disable auth (local dev). Set in Railway + Vercel env vars.
 API_KEY: str              = os.getenv("API_KEY", "")
 
-EMBEDDING_MODEL      = "voyage-multilingual-2"
+EMBEDDING_MODEL      = os.getenv("EMBEDDING_MODEL", "voyage-multilingual-2")
 COLLECTION_NAME      = "gita_verses"
-TOP_K                = 3
-RETRIEVAL_THRESHOLD  = 0.35
-MAX_TOKENS           = 250
-TEMPERATURE          = 0.7
+TOP_K                = int(os.getenv("TOP_K", "5"))
+RETRIEVAL_THRESHOLD  = float(os.getenv("RETRIEVAL_THRESHOLD", "0.35"))
+MAX_TOKENS           = int(os.getenv("MAX_TOKENS", "700"))
+TEMPERATURE          = float(os.getenv("TEMPERATURE", "0.4"))

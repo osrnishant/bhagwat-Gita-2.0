@@ -1,29 +1,29 @@
 from __future__ import annotations
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from .config import QDRANT_URL, QDRANT_API_KEY, QDRANT_PATH, COLLECTION_NAME, RETRIEVAL_THRESHOLD
 
-_client: QdrantClient | None = None
+_client: AsyncQdrantClient | None = None
 
 
-def get_client() -> QdrantClient:
+def get_client() -> AsyncQdrantClient:
     global _client
     if _client is None:
         if QDRANT_URL:
             # Qdrant Cloud — used in production (Railway)
-            _client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+            _client = AsyncQdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
         else:
             # Local file — used in development
-            _client = QdrantClient(path=QDRANT_PATH)
+            _client = AsyncQdrantClient(path=QDRANT_PATH)
     return _client
 
 
-def get_vector_count() -> int:
-    info = get_client().get_collection(COLLECTION_NAME)
+async def get_vector_count() -> int:
+    info = await get_client().get_collection(COLLECTION_NAME)
     return info.points_count or 0
 
 
-def search(
+async def search(
     query_vector: list[float], top_k: int
 ) -> tuple[list[dict], list[float], bool]:
     """
@@ -35,7 +35,7 @@ def search(
     a threshold-free search returning top-2 so the caller can add a disclaimer
     rather than returning an empty response.
     """
-    results = get_client().search(
+    results = await get_client().search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=top_k,
@@ -47,7 +47,7 @@ def search(
         return [r.payload for r in results], [r.score for r in results], False
 
     # All scores below threshold — fall back to top-2 without filter
-    fallback = get_client().search(
+    fallback = await get_client().search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=2,

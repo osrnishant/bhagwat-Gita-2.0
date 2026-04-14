@@ -135,7 +135,7 @@ async def stream_krishna(request: AskRequest):
 
     # RAG path
     query_vector = await asyncio.to_thread(encode, request.question)
-    verses, scores, low_confidence = search(query_vector, request.top_k)
+    verses, scores, low_confidence = await search(query_vector, request.top_k)
     system_prompt = build_system_prompt(verses)
 
     # Inject correction directive if the previous user turn showed frustration
@@ -199,7 +199,7 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
 
     # ── RAG pipeline ──────────────────────────────────────────────────────────
     query_vector = await asyncio.to_thread(encode, request.question)
-    verses, scores, low_confidence = search(query_vector, request.top_k)
+    verses, scores, low_confidence = await search(query_vector, request.top_k)
     system_prompt = build_system_prompt(verses)
 
     # Inject correction directive if the previous user turn showed frustration
