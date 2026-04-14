@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import BgMusicControl from './components/BgMusicControl'
+import ErrorBoundary from './components/ErrorBoundary'
 
 declare const umami: { track: (event?: string) => void } | undefined
 
@@ -24,20 +25,23 @@ const History = lazy(() => import('./screens/History'))
 export default function App() {
   return (
     <BrowserRouter>
-      <Analytics />
-      <div className="h-full w-full bg-background font-body">
-        <Suspense fallback={<div className="h-full w-full bg-background" />}>
-          <Routes>
-            <Route path="/" element={<Splash />} />
-            <Route path="/welcome" element={<Welcome />} />
-            <Route path="/voice" element={<VoiceMode />} />
-            <Route path="/response" element={<Response />} />
-            <Route path="/history" element={<History />} />
-          </Routes>
-        </Suspense>
-        {/* Background music — persists across all screens */}
-        <BgMusicControl />
-      </div>
+      <ErrorBoundary>
+        <Analytics />
+        <div className="h-full w-full bg-background font-body">
+          <Suspense fallback={<div className="h-full w-full bg-background" />}>
+            <Routes>
+              <Route path="/" element={<Splash />} />
+              <Route path="/welcome" element={<Welcome />} />
+              <Route path="/voice" element={<VoiceMode />} />
+              <Route path="/response" element={<Response />} />
+              <Route path="/history" element={<History />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+          {/* Background music — persists across all screens */}
+          <BgMusicControl />
+        </div>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

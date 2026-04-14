@@ -4,20 +4,20 @@ import { useNavigate } from 'react-router-dom'
 import { Send, History } from 'lucide-react'
 import Orb from '../components/Orb'
 import { useVoiceInput, type Lang } from '../hooks/useVoiceInput'
-import { askArya, type AskResponse, type HistoryTurn, ApiError } from '../services/api'
+import { type HistoryTurn } from '../services/api'
 
 const SESSION_KEY = 'arya_session_history'
 const MAX_HISTORY_TURNS = 4  // 4 pairs = 8 messages to Claude
 
 function loadHistory(): HistoryTurn[] {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = localStorage.getItem(SESSION_KEY)
     return raw ? JSON.parse(raw) : []
   } catch { return [] }
 }
 
 function saveHistory(turns: HistoryTurn[]) {
-  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(turns)) } catch { /* ignore */ }
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(turns)) } catch { /* ignore */ }
 }
 
 export default function VoiceMode() {
@@ -43,38 +43,16 @@ export default function VoiceMode() {
     wasListening.current = isListening
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function submit(question: string) {
+  function submit(question: string) {
     if (!question.trim() || isSubmitting) return
+    setIsSubmitting(true)  // prevents double-tap; component unmounts on navigate
     setError(null)
-    setIsSubmitting(true)
     setTextInput('')
-    try {
-      const apiLang = lang === 'hi-IN' ? 'hi' : 'en'
-      const result: AskResponse = await askArya(question, apiLang, true, history)
-
-      // Update conversation history (cap at MAX_HISTORY_TURNS pairs)
-      const responseText = result.response_text.replace(/\nCITED:.*$/s, '').trim()
-      const newHistory: HistoryTurn[] = [
-        ...history,
-        { role: 'user' as const, content: question },
-        { role: 'assistant' as const, content: responseText },
-      ].slice(-(MAX_HISTORY_TURNS * 2))
-
-      setHistory(newHistory)
-      saveHistory(newHistory)
-
-      // Persist for Response screen crash recovery
-      sessionStorage.setItem('arya_last_response', JSON.stringify({ question, result }))
-
-      navigate('/response', { state: { question, result } })
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? `Server error (${err.status})`
-          : 'Could not reach the server.'
-      setError(message)
-      setIsSubmitting(false)
-    }
+    clearTranscript()
+    const apiLang = lang === 'hi-IN' ? 'hi' : 'en'
+    navigate('/response', {
+      state: { question, streaming: true, language: apiLang, history },
+    })
   }
 
   return (

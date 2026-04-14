@@ -92,11 +92,6 @@ def _has_frustration_in_history(history: list[dict]) -> bool:
 
 def is_casual(question: str) -> bool:
     cleaned = _NAME_RE.sub("", question).strip()
-    words = cleaned.split()
-    if len(words) <= 2 and not any(
-        w in cleaned.lower() for w in ["what", "why", "how", "when", "where", "should", "can"]
-    ):
-        return True
     return bool(_CASUAL_RE.match(cleaned))
 
 
