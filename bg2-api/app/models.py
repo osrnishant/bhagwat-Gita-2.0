@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class HistoryTurn(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(..., max_length=2000)
+    content: str = Field(..., max_length=8000)
 
 
 class AskRequest(BaseModel):

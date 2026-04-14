@@ -11,7 +11,9 @@ APP_DIR   = Path(__file__).resolve().parent
 API_DIR   = APP_DIR.parent
 
 ANTHROPIC_API_KEY: str    = os.getenv("ANTHROPIC_API_KEY", "")
-VOYAGE_API_KEY: str       = os.getenv("VOYAGE_API_KEY", "")
+# VoyageAI accepts Anthropic API keys (partnership). Falls back to ANTHROPIC_API_KEY
+# if a separate VOYAGE_API_KEY is not set in the environment.
+VOYAGE_API_KEY: str       = os.getenv("VOYAGE_API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY: str   = os.getenv("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID: str  = os.getenv("ELEVENLABS_VOICE_ID", "")
 QDRANT_URL: str           = os.getenv("QDRANT_URL", "")          # set for Qdrant Cloud
