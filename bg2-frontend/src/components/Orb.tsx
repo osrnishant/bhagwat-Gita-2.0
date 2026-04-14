@@ -12,7 +12,7 @@ interface OrbProps {
 // 4-7-8 breathing (19 s): inhale 4 s → hold 7 s → exhale 8 s
 const BREATHE = {
   scale:   [1, 1.05, 1.05, 1],
-  opacity: [0.2, 0.4, 0.4, 0.2],
+  opacity: [0.15, 0.30, 0.30, 0.15],
 }
 const BREATHE_T = {
   duration: 19,
@@ -24,7 +24,7 @@ const BREATHE_T = {
 // Fast pulse while recording
 const LISTEN = {
   scale:   [1, 1.4, 1],
-  opacity: [0.3, 0.6, 0.3],
+  opacity: [0.25, 0.50, 0.25],
 }
 const LISTEN_T = {
   duration: 1,
@@ -39,7 +39,7 @@ export default function Orb({
   onPressStart,
   onPressEnd,
 }: OrbProps) {
-  const glowAnimate  = isListening ? LISTEN   : BREATHE
+  const glowAnimate   = isListening ? LISTEN   : BREATHE
   const glowTransition = isListening ? LISTEN_T : BREATHE_T
 
   const buttonSize = Math.round(size * 0.75)
@@ -47,7 +47,7 @@ export default function Orb({
 
   return (
     <div style={{ width: size, height: size, position: 'relative' }} className="flex items-center justify-center">
-      {/* Outer glow */}
+      {/* Outer glow — terracotta */}
       <motion.div
         animate={glowAnimate}
         transition={glowTransition}
@@ -56,8 +56,8 @@ export default function Orb({
           width: glowSize,
           height: glowSize,
           borderRadius: '50%',
-          backgroundColor: '#d4af37',
-          filter: 'blur(48px)',
+          backgroundColor: '#C8603A',
+          filter: 'blur(52px)',
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
@@ -73,10 +73,10 @@ export default function Orb({
         aria-label={isListening ? 'Stop listening' : 'Hold to speak'}
         style={{ width: buttonSize, height: buttonSize }}
         className={[
-          'relative z-10 rounded-full border-2 flex items-center justify-center transition-all',
+          'relative z-10 rounded-full border-2 flex items-center justify-center transition-all bg-surface shadow-card',
           isListening
-            ? 'bg-gold/20 border-gold scale-110'
-            : 'bg-transparent border-gold/30 hover:border-gold/50',
+            ? 'border-gold scale-110 shadow-card-hover'
+            : 'border-gold/30 hover:border-gold/60 hover:shadow-card-hover',
         ].join(' ')}
       >
         <Mic
@@ -88,14 +88,14 @@ export default function Orb({
       {/* isPlaying: subtle pulse ring */}
       {isPlaying && (
         <motion.div
-          animate={{ scale: [1, 1.08, 1], opacity: [0.15, 0.35, 0.15] }}
+          animate={{ scale: [1, 1.08, 1], opacity: [0.12, 0.28, 0.12] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
           style={{
             position: 'absolute',
             width: buttonSize,
             height: buttonSize,
             borderRadius: '50%',
-            border: '2px solid #d4af37',
+            border: '2px solid #C8603A',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',

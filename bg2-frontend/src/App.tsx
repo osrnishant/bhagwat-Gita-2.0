@@ -1,5 +1,16 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import BgMusicControl from './components/BgMusicControl'
+
+declare const umami: { track: (event?: string) => void } | undefined
+
+function Analytics() {
+  const location = useLocation()
+  useEffect(() => {
+    if (typeof umami !== 'undefined') umami.track()
+  }, [location.pathname])
+  return null
+}
 
 // Critical path — loaded eagerly so there's no flash on first render
 import Splash from './screens/Splash'
@@ -13,6 +24,7 @@ const History = lazy(() => import('./screens/History'))
 export default function App() {
   return (
     <BrowserRouter>
+      <Analytics />
       <div className="h-full w-full bg-background font-body">
         <Suspense fallback={<div className="h-full w-full bg-background" />}>
           <Routes>
@@ -23,6 +35,8 @@ export default function App() {
             <Route path="/history" element={<History />} />
           </Routes>
         </Suspense>
+        {/* Background music — persists across all screens */}
+        <BgMusicControl />
       </div>
     </BrowserRouter>
   )

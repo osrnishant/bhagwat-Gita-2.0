@@ -11,7 +11,7 @@ from cachetools import TTLCache
 from .embedding import encode
 from .retriever import search
 from .prompts import build_system_prompt
-from .claude_client import generate
+from .claude_client import generate, generate_stream
 from .tts_client import synthesize
 from .models import AskRequest, AskResponse, VerseResult
 
@@ -40,6 +40,14 @@ _CASUAL_PROMPT: str = (
 
 _NAME_RE = re.compile(r"\b(arya)\b", re.IGNORECASE)
 
+_FRUSTRATION_RE = re.compile(
+    r"(not what i (asked|meant|wanted)|you didn'?t answer|that'?s not helpful|"
+    r"still (not|wrong)|missed the point|not relevant|that doesn'?t help|"
+    r"you (ignored|missed)|wrong (answer|response)|"
+    r"(woh|yeh) (galat|sahi nahi)|samjhe nahi|yeh nahi puchha)",
+    re.IGNORECASE,
+)
+
 _CASUAL_RE = re.compile(
     r"^\s*("
     r"hi+|hello+|hey+|hiya|howdy|greetings|"
@@ -56,6 +64,14 @@ _CASUAL_RE = re.compile(
     r")[\s!?.]*$",
     re.IGNORECASE,
 )
+
+
+def _has_frustration_in_history(history: list[dict]) -> bool:
+    """Return True if the most recent user turn in history shows correction signals."""
+    for turn in reversed(history):
+        if turn["role"] == "user":
+            return bool(_FRUSTRATION_RE.search(turn["content"]))
+    return False
 
 
 def is_casual(question: str) -> bool:
@@ -94,6 +110,65 @@ def validate_citations(response_text: str, retrieved_verses: list[dict]) -> bool
     return cited.issubset(retrieved_ids)
 
 
+async def stream_krishna(request: AskRequest):
+    """Streaming variant — yields SSE-formatted chunks, then a final [DONE] event.
+
+    Format per chunk:  data: <token>\n\n
+    Final event:       data: [DONE]\n\n
+
+    Verses and scores are sent as a JSON metadata event before text streaming begins:
+    event: meta\ndata: <json>\n\n
+    """
+    import json
+
+    has_history = bool(request.history)
+    claude_history = [{"role": t.role, "content": t.content} for t in request.history]
+
+    # Casual path — no RAG, stream directly
+    if is_casual(request.question) and not has_history:
+        yield f"event: meta\ndata: {json.dumps({'verses': [], 'retrieval_scores': []})}\n\n"
+        async for chunk in generate_stream(_CASUAL_PROMPT, request.question):
+            # JSON-encode each chunk so embedded newlines don't break SSE framing
+            yield f"data: {json.dumps(chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
+    # RAG path
+    query_vector = await asyncio.to_thread(encode, request.question)
+    verses, scores, low_confidence = search(query_vector, request.top_k)
+    system_prompt = build_system_prompt(verses)
+
+    # Inject correction directive if the previous user turn showed frustration
+    if _has_frustration_in_history(claude_history):
+        system_prompt += (
+            "\n\nIMPORTANT: The user felt the previous answer missed the point. "
+            "Re-read their question carefully. Give a direct, grounded response "
+            "that speaks to exactly what they asked."
+        )
+
+    lang_name = _LANGUAGE_NAMES.get(request.language, "English")
+    user_message = f"[Respond in: {lang_name}]\n\n{request.question}"
+    if low_confidence:
+        user_message = f"[Note: {LOW_CONFIDENCE_NOTE}]\n\n{user_message}"
+
+    verse_dicts = [
+        {
+            "chapter": v["chapter"],
+            "verse": v["verse"],
+            "sanskrit": v["sanskrit"],
+            "hindi": v["hindi"],
+            "english": v["english"],
+        }
+        for v in verses
+    ]
+    yield f"event: meta\ndata: {json.dumps({'verses': verse_dicts, 'retrieval_scores': scores})}\n\n"
+
+    async for chunk in generate_stream(system_prompt, user_message, history=claude_history):
+        yield f"data: {json.dumps(chunk)}\n\n"
+
+    yield "data: [DONE]\n\n"
+
+
 async def ask_krishna(request: AskRequest) -> AskResponse:
     has_history = bool(request.history)
 
@@ -126,6 +201,14 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
     query_vector = await asyncio.to_thread(encode, request.question)
     verses, scores, low_confidence = search(query_vector, request.top_k)
     system_prompt = build_system_prompt(verses)
+
+    # Inject correction directive if the previous user turn showed frustration
+    if _has_frustration_in_history(claude_history):
+        system_prompt += (
+            "\n\nIMPORTANT: The user felt the previous answer missed the point. "
+            "Re-read their question carefully. Give a direct, grounded response "
+            "that speaks to exactly what they asked."
+        )
 
     lang_name = _LANGUAGE_NAMES.get(request.language, "English")
     user_message = f"[Respond in: {lang_name}]\n\n{request.question}"

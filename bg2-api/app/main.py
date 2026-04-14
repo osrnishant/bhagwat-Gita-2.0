@@ -1,9 +1,10 @@
+import hmac
 import logging
 import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -34,9 +35,9 @@ app.add_middleware(
 
 @app.middleware("http")
 async def bearer_auth(request: Request, call_next):
-    if API_KEY and request.url.path == "/ask" and request.method != "OPTIONS":
+    if API_KEY and request.url.path in ("/ask", "/ask/stream") and request.method != "OPTIONS":
         auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {API_KEY}":
+        if not hmac.compare_digest(auth, f"Bearer {API_KEY}"):
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return await call_next(request)
 
@@ -78,4 +79,32 @@ async def health():
 async def ask(request: Request, body: AskRequest):
     from .pipeline import ask_krishna
     body.question = sanitize(body.question)
+    for turn in body.history:
+        turn.content = sanitize(turn.content)
     return await ask_krishna(body)
+
+
+@app.post("/ask/stream")
+@limiter.limit("10/minute")
+async def ask_stream(request: Request, body: AskRequest):
+    """Server-Sent Events streaming endpoint.
+
+    Sends:
+      event: meta\\ndata: <json with verses + scores>\\n\\n
+      data: <token>\\n\\n  (repeated)
+      data: [DONE]\\n\\n
+
+    Frontend should use EventSource or fetch with ReadableStream.
+    """
+    from .pipeline import stream_krishna
+    body.question = sanitize(body.question)
+    for turn in body.history:
+        turn.content = sanitize(turn.content)
+    return StreamingResponse(
+        stream_krishna(body),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disables Nginx buffering in Railway/Render
+        },
+    )

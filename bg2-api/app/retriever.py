@@ -20,7 +20,7 @@ def get_client() -> QdrantClient:
 
 def get_vector_count() -> int:
     info = get_client().get_collection(COLLECTION_NAME)
-    return info.points_count
+    return info.points_count or 0
 
 
 def search(

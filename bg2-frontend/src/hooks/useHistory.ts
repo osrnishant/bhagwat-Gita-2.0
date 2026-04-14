@@ -29,28 +29,30 @@ function getDB(): Promise<IDBPDatabase> {
   return dbPromise
 }
 
-/** Save one conversation entry. Resolves when written. */
 export async function saveEntry(entry: Omit<HistoryEntry, 'id'>): Promise<void> {
   const db = await getDB()
   await db.add(STORE, entry)
 }
 
-/** Load all entries, newest first. */
 export async function getAllEntries(): Promise<HistoryEntry[]> {
   const db = await getDB()
   const all = await db.getAll(STORE)
   return (all as HistoryEntry[]).reverse()
 }
 
-/** Hook for the History screen: loads entries on mount, exposes reload. */
 export function useHistory() {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   async function load() {
     setIsLoading(true)
+    setError(null)
     try {
       setEntries(await getAllEntries())
+    } catch (err) {
+      console.error('Failed to load history:', err)
+      setError('Could not load your chat history.')
     } finally {
       setIsLoading(false)
     }
@@ -58,5 +60,5 @@ export function useHistory() {
 
   useEffect(() => { void load() }, [])
 
-  return { entries, isLoading, reload: load }
+  return { entries, isLoading, error, reload: load }
 }

@@ -12,18 +12,18 @@ export default function Splash() {
   return (
     <div className="flex h-full items-center justify-center bg-background">
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.9, ease: 'easeOut' }}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, ease: 'easeOut' }}
         className="text-center"
       >
         <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="w-16 h-16 rounded-full bg-gold/20 border border-gold/50 mx-auto mb-8"
+          animate={{ scale: [1, 1.15, 1], opacity: [0.15, 0.30, 0.15] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-14 h-14 rounded-full bg-gold/20 border border-gold/40 mx-auto mb-8"
         />
-        <h1 className="font-serif text-4xl text-gold">Bhagavad Gita 2.0</h1>
-        <p className="mt-3 text-sm text-muted font-light tracking-wide">A place of stillness.</p>
+        <h1 className="font-serif text-4xl text-cream">Arya</h1>
+        <p className="mt-2 text-sm text-muted font-light tracking-wide">Your thinking partner</p>
       </motion.div>
     </div>
   )

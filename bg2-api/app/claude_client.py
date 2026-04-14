@@ -50,3 +50,34 @@ async def generate(
             return block.text
 
     raise ValueError(f"Claude returned no text block. Stop reason: {response.stop_reason}")
+
+
+async def generate_stream(
+    system_prompt: str,
+    user_message: str,
+    history: list[dict] | None = None,
+):
+    """Stream Claude response tokens as they arrive.
+
+    Yields str chunks. Caller is responsible for assembling full text if needed.
+    """
+    messages: list[dict] = []
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
+
+    async with get_client().messages.stream(
+        model=CLAUDE_MODEL,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        system=[
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=messages,
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text

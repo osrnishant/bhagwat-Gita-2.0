@@ -4,7 +4,21 @@ import { useNavigate } from 'react-router-dom'
 import { Send, History } from 'lucide-react'
 import Orb from '../components/Orb'
 import { useVoiceInput, type Lang } from '../hooks/useVoiceInput'
-import { askKrishna, type AskResponse, ApiError } from '../services/api'
+import { askArya, type AskResponse, type HistoryTurn, ApiError } from '../services/api'
+
+const SESSION_KEY = 'arya_session_history'
+const MAX_HISTORY_TURNS = 4  // 4 pairs = 8 messages to Claude
+
+function loadHistory(): HistoryTurn[] {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveHistory(turns: HistoryTurn[]) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(turns)) } catch { /* ignore */ }
+}
 
 export default function VoiceMode() {
   const navigate = useNavigate()
@@ -12,6 +26,7 @@ export default function VoiceMode() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [textInput, setTextInput] = useState('')
+  const [history, setHistory] = useState<HistoryTurn[]>(loadHistory)
 
   const { transcript, isListening, supported, startListening, stopListening, clearTranscript } =
     useVoiceInput(lang)
@@ -20,7 +35,6 @@ export default function VoiceMode() {
   transcriptRef.current = transcript
   const wasListening = useRef(false)
 
-  // Auto-submit when speech ends
   useEffect(() => {
     if (wasListening.current && !isListening) {
       const captured = transcriptRef.current.trim()
@@ -36,7 +50,22 @@ export default function VoiceMode() {
     setTextInput('')
     try {
       const apiLang = lang === 'hi-IN' ? 'hi' : 'en'
-      const result: AskResponse = await askKrishna(question, apiLang, true)
+      const result: AskResponse = await askArya(question, apiLang, true, history)
+
+      // Update conversation history (cap at MAX_HISTORY_TURNS pairs)
+      const responseText = result.response_text.replace(/\nCITED:.*$/s, '').trim()
+      const newHistory: HistoryTurn[] = [
+        ...history,
+        { role: 'user' as const, content: question },
+        { role: 'assistant' as const, content: responseText },
+      ].slice(-(MAX_HISTORY_TURNS * 2))
+
+      setHistory(newHistory)
+      saveHistory(newHistory)
+
+      // Persist for Response screen crash recovery
+      sessionStorage.setItem('arya_last_response', JSON.stringify({ question, result }))
+
       navigate('/response', { state: { question, result } })
     } catch (err) {
       const message =
@@ -51,23 +80,40 @@ export default function VoiceMode() {
   return (
     <div className="min-h-full bg-background text-cream flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="p-6 flex justify-between items-center z-10">
+      <header className="p-5 flex justify-between items-center">
         <button
           onClick={() => navigate('/history')}
-          className="p-2 hover:bg-white/5 rounded-full transition-colors text-muted"
-          aria-label="History"
+          className="p-2 hover:bg-black/5 rounded-full transition-colors text-muted"
+          aria-label="Chat history"
         >
-          <History size={24} />
+          <History size={22} />
         </button>
+        <p className="text-xs font-medium text-muted/50 tracking-widest uppercase">Arya</p>
         <button
           onClick={() => setLang(l => l === 'en-IN' ? 'hi-IN' : 'en-IN')}
-          className="text-xs tracking-widest text-muted/60 hover:text-muted transition uppercase"
+          aria-label={lang === 'en-IN' ? 'Switch to Hindi' : 'Switch to English'}
+          className="text-xs tracking-widest text-muted/60 hover:text-muted transition uppercase px-3 py-2 rounded-full hover:bg-black/5 min-h-[40px]"
         >
           {lang === 'en-IN' ? 'हिन्दी' : 'English'}
         </button>
       </header>
 
-      {/* Main — orb or processing */}
+      {/* Conversation context indicator */}
+      {history.length > 0 && !isSubmitting && (
+        <div className="px-5 pb-1 flex items-center justify-between">
+          <p className="text-xs text-muted/50">
+            Continuing — {Math.floor(history.length / 2)} exchange{history.length > 2 ? 's' : ''} so far
+          </p>
+          <button
+            onClick={() => { setHistory([]); saveHistory([]) }}
+            className="text-xs text-muted/40 hover:text-muted transition"
+          >
+            Start fresh
+          </button>
+        </div>
+      )}
+
+      {/* Main */}
       <main className="flex-1 flex flex-col items-center justify-center relative px-6 pb-12">
         <AnimatePresence mode="wait">
           {isSubmitting ? (
@@ -81,9 +127,9 @@ export default function VoiceMode() {
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-                className="w-32 h-32 rounded-full border-t-2 border-r-2 border-gold"
+                className="w-28 h-28 rounded-full border-t-2 border-r-2 border-gold"
               />
-              <p className="font-serif text-xl italic text-gold">Krishna is reflecting…</p>
+              <p className="font-serif text-xl italic text-muted">Arya is thinking…</p>
             </motion.div>
           ) : (
             <motion.div
@@ -104,7 +150,6 @@ export default function VoiceMode() {
                 onPressEnd={() => stopListening()}
               />
 
-              {/* Status / transcript */}
               <div className="min-h-[3rem] text-center">
                 <AnimatePresence mode="wait">
                   {transcript ? (
@@ -123,42 +168,43 @@ export default function VoiceMode() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="text-muted text-lg font-light tracking-wide"
+                      className="text-muted text-base font-light tracking-wide"
                     >
-                      {isListening ? 'Listening…' : 'Hold to speak to Krishna'}
+                      {isListening ? 'Listening…' : 'Hold to speak to Arya'}
                     </motion.p>
                   )}
                 </AnimatePresence>
               </div>
 
-              {/* Error */}
               {error && (
-                <p className="text-error/70 text-sm text-center max-w-xs">{error}</p>
+                <p className="text-error/80 text-sm text-center max-w-xs">{error}</p>
               )}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* Text input bar */}
+      {/* Text input */}
       {!isSubmitting && (
-        <footer className="p-8 bg-gradient-to-t from-background to-transparent">
-          <div className="w-full max-w-xl mx-auto flex gap-3">
+        <footer className="p-6 pb-8">
+          <div className="w-full max-w-xl mx-auto">
             <div className="relative flex-1">
               <input
                 type="text"
                 value={textInput}
                 onChange={e => setTextInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submit(textInput)}
-                placeholder="Or type your question here…"
-                className="w-full bg-white/5 border border-white/10 rounded-full py-4 px-6 pr-14 focus:outline-none focus:border-gold/50 transition-all text-cream placeholder:text-muted/50"
+                placeholder="Or type to Arya…"
+                aria-label="Type your message"
+                className="w-full bg-surface border border-border rounded-full py-3.5 px-5 pr-12 focus:outline-none focus:border-gold/50 focus:shadow-card-hover transition-all text-cream placeholder:text-muted/50 text-sm shadow-card"
               />
               <button
                 onClick={() => submit(textInput)}
                 disabled={!textInput.trim()}
+                aria-label="Send message"
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gold disabled:text-muted/30 transition-colors"
               >
-                <Send size={22} />
+                <Send size={18} />
               </button>
             </div>
           </div>
