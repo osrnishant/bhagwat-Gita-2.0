@@ -1,4 +1,5 @@
 import {createHash,timingSafeEqual} from 'node:crypto';
+import {once} from 'node:events';
 
 export function authorized(header,env=process.env) {
   if (!env.ARYA_OPERATOR_USER || !env.ARYA_OPERATOR_PASSWORD || env.ARYA_OPERATOR_PASSWORD.length<32) return false;
@@ -38,7 +39,7 @@ export function gateway(path,{env=process.env,request=fetch}={}) {
       for await (const chunk of upstream.body) {
         count+=chunk.byteLength;
         if (count>2*1024*1024) throw new Error('Response limit exceeded');
-        if (!res.write(chunk)) await new Promise((resolve,reject)=>{res.once('drain',resolve);res.once('error',reject);abort.signal.addEventListener('abort',()=>reject(new Error('Disconnected')),{once:true});});
+        if (!res.write(chunk)) await once(res,'drain',{signal:abort.signal});
       }
       res.end();
     } catch (_) {
