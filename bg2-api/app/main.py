@@ -16,7 +16,7 @@ from slowapi.util import get_remote_address
 
 from .config import (
     EMBEDDING_MODEL, API_KEY, ALLOWED_ORIGINS,
-    CLAUDE_MODEL, REQUIRE_API_KEY, LOG_LEVEL, LOG_FORMAT,
+    CLAUDE_MODEL, REQUIRE_API_KEY, LOG_LEVEL, LOG_FORMAT, USAGE_DB_PATH, DAILY_REQUEST_LIMIT,
 )
 from .embedding import encode as _preload_embedding  # noqa: F401 — triggers model load
 from .logging_config import configure_logging
@@ -32,9 +32,9 @@ _ASK_PATHS = {"/ask", "/ask/stream"}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(level=LOG_LEVEL, fmt=LOG_FORMAT)
-    if REQUIRE_API_KEY and not API_KEY:
+    if REQUIRE_API_KEY and len(API_KEY) < 32:
         raise RuntimeError(
-            "REQUIRE_API_KEY=true but API_KEY is not set — refusing to start. "
+            "REQUIRE_API_KEY=true but API_KEY is missing or shorter than 32 characters — refusing to start. "
             "Set API_KEY in your environment or set REQUIRE_API_KEY=false for local dev."
         )
     if not API_KEY:
@@ -87,6 +87,15 @@ async def bearer_auth(request: Request, call_next):
         auth = request.headers.get("Authorization", "")
         if not hmac.compare_digest(auth, f"Bearer {API_KEY}"):
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if request.url.path in _ASK_PATHS and request.method == "POST":
+        from .usage import reserve
+        import asyncio
+        try:
+            admitted = await asyncio.to_thread(reserve, USAGE_DB_PATH, DAILY_REQUEST_LIMIT)
+        except Exception:
+            return JSONResponse(status_code=503, content={"error": "Usage accounting unavailable"})
+        if not admitted:
+            return JSONResponse(status_code=429, content={"error": "Daily usage limit reached"})
     return await call_next(request)
 
 

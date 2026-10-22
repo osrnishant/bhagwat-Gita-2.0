@@ -118,7 +118,7 @@ def extract_citations(text: str) -> set[str]:
 def validate_citations(response_text: str, retrieved_verses: list[dict]) -> bool:
     cited = extract_citations(response_text)
     retrieved_ids = {v["id"] for v in retrieved_verses}
-    return cited.issubset(retrieved_ids)
+    return bool(cited) and cited.issubset(retrieved_ids)
 
 
 async def stream_krishna(request: AskRequest):
@@ -178,13 +178,19 @@ async def stream_krishna(request: AskRequest):
     ]
     yield f"event: meta\ndata: {json.dumps({'verses': verse_dicts, 'retrieval_scores': scores})}\n\n"
 
+    # Buffer the grounded answer before publishing so unsupported citations cannot
+    # escape to the client before validation. Greetings still stream directly.
     try:
-        async for chunk in generate_stream(system_prompt, user_message, history=claude_history):
-            yield f"data: {json.dumps(chunk)}\n\n"
-    except anthropic.APIError as exc:
-        logger.error("Claude API unavailable during stream: %s", exc)
-        yield f"data: {json.dumps(_claude_fallback_message(request.language))}\n\n"
-
+        answer = await generate(system_prompt, user_message, history=claude_history)
+        if not validate_citations(answer, verses):
+            answer = await generate(system_prompt + "\nOnly cite retrieved verses and include CITED: [chapter:verse].", user_message, history=claude_history)
+        if not validate_citations(answer, verses):
+            yield f"event: error\ndata: {json.dumps({'error': 'Answer could not be grounded in retrieved verses'})}\n\n"
+            return
+        yield f"data: {json.dumps(answer)}\n\n"
+    except anthropic.APIError:
+        yield f"event: error\ndata: {json.dumps({'error': 'AI provider unavailable'})}\n\n"
+        return
     yield "data: [DONE]\n\n"
 
 
@@ -262,6 +268,9 @@ async def ask_krishna(request: AskRequest) -> AskResponse:
             response_text = await generate(stricter, user_message, history=claude_history)
         except Exception as exc:
             logger.error("Retry also failed: %s — using original response", exc)
+
+    if not validate_citations(response_text, verses):
+        raise RuntimeError("Answer could not be grounded in retrieved verses")
 
     audio_url = None
     if request.voice:

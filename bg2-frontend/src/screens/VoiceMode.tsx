@@ -12,7 +12,9 @@ const MAX_HISTORY_TURNS = 4  // 4 pairs = 8 messages to Claude
 function loadHistory(): HistoryTurn[] {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : []
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((turn): turn is HistoryTurn => !!turn && ['user','assistant'].includes(turn.role) && typeof turn.content === 'string').slice(-MAX_HISTORY_TURNS * 2)
   } catch { return [] }
 }
 
