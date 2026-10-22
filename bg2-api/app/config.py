@@ -26,7 +26,7 @@ ALLOWED_ORIGINS: list[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173
 # Leave empty to disable auth (local dev). Set in Railway + Vercel env vars.
 API_KEY: str              = os.getenv("API_KEY", "")
 # Set REQUIRE_API_KEY=true in production to fail startup if API_KEY is missing.
-REQUIRE_API_KEY: bool     = os.getenv("REQUIRE_API_KEY", "false").lower() == "true"
+REQUIRE_API_KEY: bool     = os.getenv("REQUIRE_API_KEY", "true").lower() == "true"
 LOG_LEVEL: str            = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT: str           = os.getenv("LOG_FORMAT", "json")   # "json" or "text"
 
@@ -36,3 +36,6 @@ TOP_K                = int(os.getenv("TOP_K", "5"))
 RETRIEVAL_THRESHOLD  = float(os.getenv("RETRIEVAL_THRESHOLD", "0.35"))
 MAX_TOKENS           = int(os.getenv("MAX_TOKENS", "700"))
 TEMPERATURE          = float(os.getenv("TEMPERATURE", "0.4"))
+
+USAGE_DB_PATH = os.getenv("USAGE_DB_PATH", str(API_DIR / "data" / "usage.sqlite3"))
+DAILY_REQUEST_LIMIT = int(os.getenv("DAILY_REQUEST_LIMIT", "100"))

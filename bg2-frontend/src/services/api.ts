@@ -28,11 +28,10 @@ export class ApiError extends Error {
   }
 }
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-const API_KEY  = import.meta.env.VITE_API_KEY  ?? ''
-
-if (!API_KEY) {
-  console.warn('[api] VITE_API_KEY not set — /ask endpoint is unprotected.')
+// The deployment gateway injects the backend credential server-side.
+const BASE_URL = '/api'
+function checkSession(status: number) {
+  if (status === 401) window.location.assign('/api/session')
 }
 
 export type StreamEvent =
@@ -46,14 +45,14 @@ export async function* askAryaStream(
   history: HistoryTurn[] = [],
 ): AsyncGenerator<StreamEvent> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`
 
-  const res = await fetch(`${BASE_URL}/ask/stream`, {
+  const res = await fetch(`${BASE_URL}/stream`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ question, language, voice: false, top_k: 3, history }),
   })
 
+  checkSession(res.status)
   if (!res.ok) throw new ApiError(res.status, `Request failed: ${res.status}`)
 
   const reader = res.body!.getReader()
@@ -74,6 +73,7 @@ export async function* askAryaStream(
         eventType = line.slice(7).trim()
       } else if (line.startsWith('data: ')) {
         const raw = line.slice(6).trim()
+        if (eventType === 'error') throw new ApiError(502, 'AI response unavailable')
         if (raw === '[DONE]') {
           yield { type: 'done' }
           return
@@ -93,6 +93,7 @@ export async function* askAryaStream(
       }
     }
   }
+  throw new ApiError(502, 'Incomplete AI response')
 }
 
 export async function askArya(
@@ -102,7 +103,6 @@ export async function askArya(
   history: HistoryTurn[] = [],
 ): Promise<AskResponse> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`
 
   const res = await fetch(`${BASE_URL}/ask`, {
     method: 'POST',
@@ -110,6 +110,7 @@ export async function askArya(
     body: JSON.stringify({ question, language, voice, top_k: 3, history }),
   })
 
+  checkSession(res.status)
   if (!res.ok) {
     throw new ApiError(res.status, `Request failed: ${res.status}`)
   }
